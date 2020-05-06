@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>World COVID19 Heat Map</title>
+
+	<style>
+		html, body {
+			height: 100%;
+            background-image: url("http://gis.p5hq.com/wp-content/uploads/2020/04/what-the-hex.png"); 
+            background-position: center center; 
+            background-size: auto; 
+            background-repeat: repeat; 
+            background-attachment: scroll;
+			margin: 0;
+			padding: 0;
+		}
+		#mapid {
+            z-index: 0;
+			position: absolute;
+			top:0; 
+			bottom:0; 
+			right:0; 
+			left:0;
+			width: 900px;
+			height: 700px;
+        }
+        #TotalCases {
+            z-index: 1;
+			background: rgb(248, 248, 248, 0.5);
+			color:rgb(0, 90, 50);
+			font-family: Courier, Arial, Helvetica, sans-serif;
+			font-size:18px;
+            font-weight: bold;
+            text-align: right;
+            position: fixed;
+            top: 30px;
+            left: 22%;
+            width: 240px;
+		}
+        #TotalDeaths {
+            z-index: 1;
+			background: rgb(248, 248, 248, 0.5);
+			color:rgb(105, 4, 4);
+			font-family: Courier, Arial, Helvetica, sans-serif;
+			font-size:18px;
+            font-weight: bold;
+            text-align: right;
+            position: fixed;
+            top: 60px;
+            left: 22%;
+            width: 240px;
+		}
+
+    </style>    
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+	<link rel="stylesheet" href="leaflet.css" />
+    <script src="leaflet.js"></script>
+    <script src="esri-leaflet.js"></script>
+    <script src='dist/leaflet-zoom-show-hide.js'></script>
+	<script src='dist/Leaflet.fullscreen.min.js'></script>
+	<link rel='stylesheet' href='dist/leaflet.fullscreen.css' />
+	<script src='dist/L.Control.MousePosition.js'></script>
+    <link rel='stylesheet' href='dist/L.Control.MousePosition.css' />
+
+</head>
+
+<body>
+    <div id="mapid"></div>
+    <div id="TotalCases"></div>
+    <div id="TotalDeaths"></div>
+    <script type="text/javascript" src="geojson/worldgeojson.js"></script>
+    <script type="text/javascript" src="heat/dist/leaflet-heat.js"></script>
+    <script type="text/javascript">   
+
+        var mymap = L.map('mapid', {
+            center: [20, 0],
+            zoom: 2
+        });
+
+        var basemaps = {
+            Streets: L.esri.basemapLayer('Streets'),
+            Topographic: L.esri.basemapLayer('Topographic'),	
+            Gray: L.esri.basemapLayer('Gray'),
+            DarkGray: L.esri.basemapLayer('DarkGray'),				
+        };
+        basemaps.Gray.addTo(mymap);
+
+        function countryStyle(feature) {
+            return {
+                weight: 0.5,
+                opacity: .6,
+                color: 'white',  
+                dashArray: '3',
+                fillOpacity: 0.5,
+                fillColor : 'blue'
+                };
+        }
+
+
+        var myCountries = L.geoJson(myworld, {
+			style: countryStyle,
+			minZoom: 8 // this only works for raster/tile layers. Vector layers not affected.
+            });
+        //myCountries.addTo(mymap);
+
+
+        var countryPolygons = JSON.parse(JSON.stringify(myworld));  //makes a completely independent copy of statesData (deep)
+        console.log("Number of country polygons: ", countryPolygons.features.length); //number of features
+        //console.log("Country polys: ", countryPolygons);
+
+        // Get updated Johns Hopkins COVID-19 country-based data from Esri URL. This URL filters out places with 0 confirmed cases.
+        function getData(callback) {
+            var covidCountryUrl = 'https://services1.arcgis.com/0MSEUqKaxRlEPj5g/arcgis/rest/services/ncov_cases/FeatureServer/1/query?returnGeometry=true&where=Confirmed%3C%3E0&outFields=*&f=geojson';
+            $.getJSON(covidCountryUrl, function(data) {          
+                callback(data);
+            });
+        }
+
+        var noCoords = [];
+        //var noCovid = [];
+        var maxCountry = '';
+        var myCountriesInfections = [];
+        var myCountriesDeaths = [];
+        // Get updated COVID json out of the asynchronous getJSON function to use and update country data
+        getData(function(data) {
+            console.log('Number of countries: ', data.features.length); //number of features
+            sumInfections = 0;
+            sumDeaths = 0; 
+            max = 0;                     
+            for (var i = 0; i < data.features.length; i++) {
+                var num = data.features[i].properties.Confirmed;
+                var deaths = data.features[i].properties.Deaths;
+                sumDeaths += deaths;
+				sumInfections += num;
+                if (data.features[i].geometry == null) {                   
+                    console.log('**NO COORDINATES**', i, data.features[i].properties.Country_Region, data.features[i].properties.Confirmed);
+                    noCoords.push([data.features[i].properties.Combined_Key, data.features[i].properties.Confirmed]);
+                }
+/*                 else if (num == 0){ 
+                    //console.log('**Country with NO INFECTIONS**', i, data.features[i].properties.Combined_Key, data.features[i].properties.Confirmed);
+                    noCovid.push([data.features[i].properties.Combined_Key, data.features[i].properties.Confirmed]);
+                }    */             
+                else { 
+                    //find country with max number of infections and use number for normalizing
+                    max = (num > max) ? num : max;
+                    if (num == max) {
+                        maxCountry = data.features[i].properties.Combined_Key;
+                    }                    
+                    //countryCoords = data.features[i].geometry.coordinates.reverse();
+                    countryLat = data.features[i].properties.Lat;
+                    countryLong = data.features[i].properties.Long_;
+                    //countryConfirmed = data.features[i].properties.Confirmed;
+                    //countryDead = data.features[i].properties.Deaths;
+                    var itemsI = [countryLat, countryLong, num]
+                    var itemsD = [countryLat, countryLong, deaths]
+                    myCountriesInfections.push([...itemsI]);
+                    myCountriesDeaths.push([...itemsD]);
+                }
+            }
+            console.log('Country or US state with highest infections: ', maxCountry, max.toLocaleString());
+            console.log('No coordinates: ', noCoords);
+            //console.log('No Infections: ', noCovid);            
+            console.log('Final Cases Array: ', myCountriesInfections);
+            console.log('Final Deaths Array: ', myCountriesDeaths);
+            
+            var heatInfections = L.heatLayer(myCountriesInfections, {
+                radius: 8,  //default is 25
+                minOpacity: 0.3,  //he minimum opacity the heat will start at, default is 0
+                //maxZoom: 3, //equals maxZoom of the map by default
+                max: 1,  //maximum point intensity, 1.0 by default
+                blur: 8,  //amount of blur, 15 by default
+                gradient: {0.4: 'blue', 0.65: 'lime', 1: 'red'}  //color gradient config
+                
+            }).addTo(mymap);
+
+            var heatDeaths = L.heatLayer(myCountriesDeaths, {
+                radius: 8,  //default is 25
+                minOpacity: 0.3,  //he minimum opacity the heat will start at, default is 0
+                //maxZoom: 3, //equals maxZoom of the map by default
+                max: 1,  //maximum point intensity, 1.0 by default
+                blur: 8,  //amount of blur, 15 by default
+                gradient: {0.4: 'blue', 0.65: 'lime', 1: 'red'}  //color gradient config
+                
+            });
+
+            var countries = L.geoJSON(data, {
+                pointToLayer:  function(feature, latlng) {
+                    countryName = (feature.properties.Country_Region);         
+                    return L.circle(latlng, {
+                        weight: 0.2,
+                        opacity: 1,
+                        color: 'red',
+                        fillOpacity: 0.2,
+                        radius: getSize(feature.properties.Confirmed)
+                    });
+
+                }
+            });
+
+            function getSize(d) {
+            return d > 100000 ? 250000 :
+                d > 100000  ? 150000 :
+                d > 50000  ? 125000 :
+                d > 10000  ? 100000 :
+                d > 1000   ? 75000 :
+                d > 200   ? 50000 :
+                d > 10   ? 25000 :
+                10000;
+            }
+
+            // used Npm package leaflet.zoomshowhide to control display of heat layers
+            zsh = new ZoomShowHide();
+            zsh.addTo(mymap);
+            heatInfections.min_zoom = 1;
+            heatInfections.max_zoom = 3;
+            zsh.addLayer(heatInfections);
+            countries.min_zoom = 4;
+            zsh.addLayer(countries);
+
+    		// This function controls the scale for the county points layer. Only want them displayed when zoomed in.	
+/*             mymap.on('zoomend', function(e) {
+                if (mymap.getZoom() >= 4) {
+                    console.log(mymap.getZoom());
+                    mymap.addLayer(countries);
+                }
+                else if (mymap.getZoom() < 4 ) {
+                    console.log(mymap.getZoom());
+                    mymap.removeLayer(countries);
+                }
+            });	 */
+
+            countries.bindPopup(function (layer) {
+                var countryName = layer.feature.properties.Country_Region;
+                var provinceName = layer.feature.properties.Province_State;
+                var numInfected = layer.feature.properties.Confirmed.toLocaleString(); // Adds commas to large numbers
+                var numDead = layer.feature.properties.Deaths.toLocaleString(); // Adds commas to large numbers 
+                var featureDate = new Date(layer.feature.properties.Last_Update);
+                if (provinceName == null) {
+                    return L.Util.template('<b>' + countryName + '</b><br>Confirmed cases: <b>' + numInfected + '</b><br>Deaths: <b>' + numDead + '</b><br><br><i>Last updated:<br> '+ featureDate.toDateString() + ' ' + featureDate.toLocaleTimeString() + '</i>', layer.feature.properties);
+
+                }
+                else {
+                    return L.Util.template('<b>' + countryName + '<br>' + provinceName + '</b><br>Confirmed cases: <b>' + numInfected + '</b><br>Deaths: <b>' + numDead + '</b><br><br><i>Last updated:<br> '+ featureDate.toDateString() + ' ' + featureDate.toLocaleTimeString() + '</i>', layer.feature.properties);
+                }
+            });
+
+            overlays = {
+                "Infections": heatInfections,
+                "Deaths": heatDeaths           
+            };
+
+            mymap.addControl(new L.Control.Fullscreen());
+            L.control.mousePosition().addTo(mymap);
+            L.control.layers(basemaps, overlays).addTo(mymap);
+            document.getElementById("TotalCases").innerHTML = 'Infections: ' + sumInfections.toLocaleString();
+            document.getElementById("TotalDeaths").innerHTML = 'Deaths: ' + sumDeaths.toLocaleString(); 
+
+        });
+
+
+	</script> 
+	
+</body>
+
+</html>

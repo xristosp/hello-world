@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>COVID-19 Confirmed</title>
+
+	<style>
+		html, body {
+			height: 100%;
+			margin: 0;
+			padding: 0;
+			background-image: url("http://gis.p5hq.com/wp-content/uploads/2020/04/what-the-hex.png"); 
+            background-position: center center; 
+            background-size: auto; 
+            background-repeat: repeat; 
+            background-attachment: scroll;
+		}
+		#mapid {
+            z-index: 0;
+			position: absolute;
+			top:0; 
+			bottom:0; 
+			right:0; 
+			left:0;
+			width: 900px;
+			height: 700px;
+        }
+        #navbar {
+            background-color: rgba(0, 0, 0, 0.3);
+            color: #f2f2f2;
+            font-size: 20px;
+            font-family: Arial, Helvetica, sans-serif;
+            text-align: center;
+            padding: 7px;
+            position: fixed;
+            top: 10px;
+            left: 290px;
+            height: 25px;
+            width: 360px;
+            border: none;
+            border-radius: 8px;
+        }
+		#Total {
+            z-index: 1;
+			background: rgba(0, 0, 0, 0.3);
+			color:rgb(84, 245, 9);
+			font-family: Courier, Arial, Helvetica, sans-serif;
+			font-size:18px;
+            font-weight: bold;
+            text-align: center;
+            position: fixed;
+            top: 60px;
+            left: 100px;
+            width: 220px;
+			}
+	</style>
+	<link rel="stylesheet" href="leaflet.css" />
+	<script src="leaflet.js"></script>
+	<script src="esri-leaflet.js"></script>
+	<script src='dist/Leaflet.fullscreen.min.js'></script>
+	<link rel='stylesheet' href='dist/leaflet.fullscreen.css' />
+
+</head>
+
+<body>
+
+    <div id="mapid"></div>
+    <div id="navbar">COVID-19: Confirmed Cases Worldwide</div>
+    <div id="Total"></div>
+	<script type="text/javascript">
+
+		var mymap = L.map('mapid', {
+			center: [20, 0],
+			zoom: 2
+		});
+
+		var basemaps = {
+			Streets: L.esri.basemapLayer('Streets'),
+			Topographic: L.esri.basemapLayer('Topographic'),	
+            Gray: L.esri.basemapLayer('Gray'),
+            DarkGray: L.esri.basemapLayer('DarkGray'),				
+		};
+
+		//L.control.layers(basemaps, {}, {collapsed: false}).addTo(mymap);
+
+		basemaps.DarkGray.addTo(mymap);
+    
+        var icons = {
+			xlg: L.icon({
+				iconUrl: 'icons/firefly_green.png',
+				iconSize: [80, 70],
+			}),
+			lg: L.icon({
+				iconUrl: 'icons/firefly_green.png',
+				iconSize: [60, 50],
+			}),
+			md: L.icon({
+				iconUrl: 'icons/firefly_green.png',
+				iconSize: [50, 50],
+			}),
+			sm: L.icon({
+				iconUrl: 'icons/firefly_green.png',
+				iconSize: [15, 15],
+			}),
+			xsm: L.icon({
+				iconUrl: 'icons/firefly_green.png',
+				iconSize: [8, 8],
+			}),
+		};
+		totalConfirmed = 0;            
+        var covid = L.esri.featureLayer({
+		  url: 'https://services1.arcgis.com/0MSEUqKaxRlEPj5g/ArcGIS/rest/services/ncov_cases/FeatureServer/1',
+		  where: "Confirmed <> '0'",
+
+		  // Feature Layer Options
+		  pointToLayer: function (geojson, latlng) {
+			var gradSymbols = (geojson.properties.Confirmed);
+			totalConfirmed = totalConfirmed + gradSymbols;   
+            document.getElementById("Total").innerHTML = 'Total: ' + totalConfirmed.toLocaleString();			  
+	
+			if (gradSymbols > 200000) {
+				return L.marker(latlng, {
+			  		icon: icons['xlg']
+				});
+				}	  
+				else if (gradSymbols > 50000) {
+					return L.marker(latlng, {
+						icon: icons['lg']				
+				});
+				}
+				else if (gradSymbols > 10000) {
+					return L.marker(latlng, {
+						icon: icons['md']				
+				});				
+				}
+				else if (gradSymbols > 1000) {
+					return L.marker(latlng, {
+						icon: icons['sm']				
+				});
+				}
+				else {
+					return L.marker(latlng, {
+						icon: icons['xsm']				
+				});
+				}
+			}
+		}).addTo(mymap);
+		mymap.addControl(new L.Control.Fullscreen());
+
+        var timestampMsec = 1228694400000;
+		var myDate = new Date(timestampMsec);
+		var str = myDate.toDateString();
+
+		covid.bindPopup(function (layer) {
+			var featureDate = new Date(layer.feature.properties.Last_Update);
+			return L.Util.template('<table cellpadding="3"><tr bgcolor="#eeeeee"><td><b>Country/Region: </b></td><td>{Country_Region}</td></tr><tr><td><b>Province/State: </b></td><td>{Province_State}</td></tr><tr bgcolor="#eeeeee"><td><b>Confirmed: </b></td><td>{Confirmed}</td></tr><tr><td><b>Deaths: </b></td><td>{Deaths}</td></tr><tr bgcolor="#eeeeee"><td>Last Update: </td><td>' + featureDate.toDateString() + '<br>' + featureDate.toLocaleTimeString() +'</td></tr></table>',layer.feature.properties);
+        });
+        
+    </script> 		
+</body>
+
+</html>

@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>World Choropleth</title>
+
+	<style>
+		html, body {
+			height: 100%;
+            background-image: url("http://gis.p5hq.com/wp-content/uploads/2020/04/what-the-hex.png"); 
+            background-position: center center; 
+            background-size: auto; 
+            background-repeat: repeat; 
+            background-attachment: scroll;
+			margin: 0;
+			padding: 0;
+		}
+		#mapid {
+            z-index: 0;
+			position: absolute;
+			top:0; 
+			bottom:0; 
+			right:0; 
+			left:0;
+			width: 900px;
+			height: 700px;
+        }
+        #TotalCases {
+            z-index: 1;
+			background: rgb(248, 248, 248, 0.5);
+			color:rgb(0, 90, 50);
+			font-family: Courier, Arial, Helvetica, sans-serif;
+			font-size:18px;
+            font-weight: bold;
+            text-align: right;
+            position: fixed;
+            top: 30px;
+            left: 22%;
+            width: 240px;
+		}
+        #TotalDeaths {
+            z-index: 1;
+			background: rgb(248, 248, 248, 0.5);
+			color:rgb(105, 4, 4);
+			font-family: Courier, Arial, Helvetica, sans-serif;
+			font-size:18px;
+            font-weight: bold;
+            text-align: right;
+            position: fixed;
+            top: 60px;
+            left: 22%;
+            width: 240px;
+		}
+
+    </style>    
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+	<link rel="stylesheet" href="leaflet.css" />
+    <script src="leaflet.js"></script>
+    <script src="esri-leaflet.js"></script>
+	<script src='dist/Leaflet.fullscreen.min.js'></script>
+	<link rel='stylesheet' href='dist/leaflet.fullscreen.css' />
+	<script src='dist/L.Control.MousePosition.js'></script>
+    <link rel='stylesheet' href='dist/L.Control.MousePosition.css' />
+
+</head>
+
+<body>
+    <div id="mapid"></div>
+    <div id="TotalCases"></div>
+    <div id="TotalDeaths"></div>
+    <script type="text/javascript" src="geojson/worldgeojson.js"></script>
+    <script type="text/javascript">   
+
+        var mymap = L.map('mapid', {
+            center: [20, 0],
+            zoom: 2
+        });
+
+        var basemaps = {
+            Streets: L.esri.basemapLayer('Streets'),
+            Topographic: L.esri.basemapLayer('Topographic'),	
+            Gray: L.esri.basemapLayer('Gray'),
+            DarkGray: L.esri.basemapLayer('DarkGray'),				
+        };
+        basemaps.Gray.addTo(mymap);
+
+        function countryStyle(feature) {
+            return {
+                weight: 0.5,
+                opacity: .6,
+                color: 'white',  
+                dashArray: '3',
+                fillOpacity: 0.5,
+                fillColor : 'blue'
+                };
+        }
+
+/*         var polyCountries = L.esri.featureLayer({
+            url: 'https://services.arcgis.com/P3ePLMYs2RVChkJx/ArcGIS/rest/services/World__Countries_Generalized_analysis_trim/FeatureServer/0',
+			fields: ['OBJECTID', 'NAME'],
+            simplifyFactor: 0.35,
+            precision: 5,
+			minZoom: 2,
+            style: countryStyle
+        }).addTo(mymap); */
+
+        var myCountries = L.geoJson(myworld, {
+			style: countryStyle,
+			minZoom: 8 // this only works for raster/tile layers. Vector layers not affected.
+            });
+        //myCountries.addTo(mymap);
+
+
+        var countryPolygons = JSON.parse(JSON.stringify(myworld));  //makes a completely independent copy of statesData (deep)
+        console.log("Number of country polygons: ", countryPolygons.features.length); //number of features
+        //console.log("Country polys: ", countryPolygons);
+
+        // Get updated Johns Hopkins COVID-19 country-based data from Esri URL
+        function getCovidData(callback) {
+            var covidCountryUrl = 'https://services1.arcgis.com/0MSEUqKaxRlEPj5g/arcgis/rest/services/ncov_cases/FeatureServer/2/query?returnGeometry=false&where=Confirmed%3C%3E0&outFields=Confirmed%2C+Deaths%2C+Last_Update%2C+Country_Region&f=geojson';
+            $.getJSON(covidCountryUrl, function(data) {          
+                callback(data);
+            });
+        }
+
+        // Get updated COVID json out of the asynchronous getJSON function to use and update country data
+        getCovidData(function(covidJson) {
+            console.log("Number of COVID db countries: ", covidJson.features.length); //number of features
+            //console.log("COVID db: ", covidJson);
+            covidJson.features.sort(function(a,b){
+                var x = a.properties.Country_Region;
+                var y = b.properties.Country_Region;
+                if (x < y) {return -1;}
+                if (x > y) {return 1;}
+                return 0;
+            });
+            countryPolygons.features.sort(function(a,b){
+                var x = a.properties.name;
+                var y = b.properties.name;
+                if (x < y) {return -1;}
+                if (x > y) {return 1;}
+                return 0;
+            });
+            //console.log("Sorted COVID Data: ", covidJson);
+            //console.log("Sorted country polygon Data: ", countryPolygons); 
+
+            var sumCases = 0;
+            var sumDeaths = 0;
+            var extraCountries = [];
+            for (var i = 0; i < countryPolygons.features.length; i++) {                            
+                myCountryName = countryPolygons.features[i].properties.name;
+                //myStateConfirmed = countryPolygons.features[i].properties.covid_confirmed;
+                //myStateDeaths = countryPolygons.features[i].properties.covid_deaths;
+                countryName = covidJson.features[i].properties.Country_Region;
+                numConfirmed = covidJson.features[i].properties.Confirmed;
+                numDeaths = covidJson.features[i].properties.Deaths;
+                lastUpdate = covidJson.features[i].properties.Last_Update;
+
+                
+                var featureDate = new Date(covidJson.features[i].properties.Last_Update); // Converts date string to readable format
+
+                //console.log("name: ", sumDeaths, countryName, numDeaths);
+                //console.log("name poly: ", myCountryName);
+                //console.log("name covid: ", countryName);
+                if (myCountryName == countryName) {
+                    countryPolygons.features[i].properties.covid_confirmed = numConfirmed;
+                    countryPolygons.features[i].properties.covid_deaths = numDeaths;
+                    countryPolygons.features[i].properties.last_update = featureDate;
+                    console.log("UPDATED: ", myCountryName, countryPolygons.features[i].properties.covid_confirmed, countryPolygons.features[i].properties.covid_deaths, countryPolygons.features[i].properties.last_update);
+                    sumCases += numConfirmed; //total numbers will include items with no geos (cruise ships)
+                    sumDeaths += numDeaths;
+                    }
+                    else {
+                        // We know the COVID dataset has more values than the country geojson we are using for our map,
+                        // so we will remove the excess COVID "country" or country polygon, which will be the one that is
+                        // higher alphabetically, and create an array of those extras for reference
+                        if (myCountryName < countryName) {
+                            //console.log("Throwing out country polygon since no COVID data exists: ", myCountryName);
+                            extraCountries.push(myCountryName);
+                            countryPolygons.features.splice(i, 1);  // removes extra country from polygons
+                            i = i - 1;  // put counter back one to compare next pair after removal
+                        }
+                        if (myCountryName > countryName) {
+                            //console.log("Throwing out item from COVID data since no polygon exists: ", countryName);
+                            extraCountries.push(countryName, numConfirmed, numDeaths);
+                            covidJson.features.splice(i, 1);  // removes extra country from COVID JSON
+                            i = i - 1;  // put counter back one to compare next pair after removal
+                        }                        
+                    }
+            }
+            console.log("Extra Countries: ", extraCountries);
+            //console.log("covidData after deletions: ", covidJson);
+            console.log("NEWEST country JSON: ", countryPolygons);
+
+            myCountriesInfected = L.geoJson(countryPolygons, {
+				style: infectedStyle
+                });
+            myCountriesInfected.addTo(mymap);
+
+            myCountriesDead = L.geoJson(countryPolygons, {
+				style: deadStyle
+                });
+
+            myCountriesInfected.bindPopup(function (layer) {
+                var numInfected = layer.feature.properties.covid_confirmed.toLocaleString(); // Adds commas to large numbers
+                var numDead = layer.feature.properties.covid_deaths.toLocaleString(); // Adds commas to large numbers 
+                var featureDate = new Date(layer.feature.properties.last_update);
+			    return L.Util.template('<b>{name}</b><br>Confirmed cases: <b>' + numInfected + '</b><br>Deaths: <b>' + numDead + '</b><br><br><i>Last updated:<br> '+ featureDate.toDateString() + ' ' + featureDate.toLocaleTimeString() + '</i>', layer.feature.properties);
+            });
+
+            myCountriesDead.bindPopup(function (layer) {
+                var numInfected = layer.feature.properties.covid_confirmed.toLocaleString(); // Adds commas to large numbers
+                var numDead = layer.feature.properties.covid_deaths.toLocaleString(); // Adds commas to large numbers 
+                var featureDate = new Date(layer.feature.properties.last_update);
+			    return L.Util.template('<b>{name}</b><br>Confirmed cases: <b>' + numInfected + '</b><br>Deaths: <b>' + numDead + '</b><br><br><i>Last updated:<br> '+ featureDate.toDateString() + ' ' + featureDate.toLocaleTimeString() + '</i>', layer.feature.properties);
+            });
+
+            overlays = {
+                "Infected by Country": myCountriesInfected,
+                "Deaths by Country": myCountriesDead           
+            };
+
+            mymap.addControl(new L.Control.Fullscreen());
+            L.control.mousePosition().addTo(mymap);
+            L.control.layers(basemaps, overlays).addTo(mymap);
+            document.getElementById("TotalCases").innerHTML = 'Infections: ' + sumCases.toLocaleString();
+            document.getElementById("TotalDeaths").innerHTML = 'Deaths: ' + sumDeaths.toLocaleString(); 
+
+        });
+
+		// get color depending on number value
+		function getColorInfected(d) {
+			return d > 100000 ? '#005a32'  : 
+					d > 50000  ? '#238b45' :
+					d > 20000  ? '#41ab5d' :
+					d > 10000  ? '#74c476' :
+					d > 5000   ? '#a1d99b' :
+					d > 2000   ? '#c7e9c0' :
+					d > 1000   ? '#e5f5e0' :
+								'#f7fcf5';						
+            } 
+            
+        function getColorDead(d) {
+			return d > 10000 ? '#99000d'  : 
+					d > 5000  ? '#cb181d' :
+					d > 2000  ? '#ef3b2c' :
+					d > 1000  ? '#fb6a4a' :
+					d > 500   ? '#fc9272' :
+					d > 200   ? '#fcbba1' :
+					d > 100   ? '#fee0d2' :
+								'#fff5f0';						
+			}  
+
+        function infectedStyle (feature) {
+            return {
+                weight: 0.6,
+                opacity: 0.6,
+                color: 'grey',
+                dashArray: '3',
+                fillOpacity: 0.7,
+                fillColor : getColorInfected(feature.properties.covid_confirmed)
+                };
+            }
+            
+        function deadStyle (feature) {
+            return {
+                weight: 0.6,
+                opacity: 0.6,
+                color: 'grey',
+                dashArray: '3',
+                fillOpacity: 0.7,
+                fillColor : getColorDead(feature.properties.covid_deaths)
+                };
+            } 
+
+
+	</script> 
+	
+</body>
+
+</html>

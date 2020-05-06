@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>US COVID-19 Heat Map</title>
+
+	<style>
+		html, body {
+			height: 100%;
+			margin: 0;
+			padding: 0;
+			background-image: url("http://gis.p5hq.com/wp-content/uploads/2020/04/what-the-hex.png"); 
+            background-position: center center; 
+            background-size: auto; 
+            background-repeat: repeat; 
+            background-attachment: scroll;
+		}
+		#mapid {
+            z-index: 0;
+			position: absolute;
+			top:0; 
+			bottom:0; 
+			right:0; 
+			left:0;
+			width: 900px;
+			height: 700px;
+			margin-left: auto;
+			margin-right: auto;
+        }
+		#TotalInfections {
+            z-index: 1;
+			background: rgb(248, 248, 248, 0.7);
+			color:rgb(46, 46, 46);
+			font-family: Courier, Arial, Helvetica, sans-serif;
+			font-size:18px;
+            font-weight: bold;
+            text-align: right;
+            position: fixed;
+            top: 30px;
+            left: 27%;
+            width: 240px;
+		}
+        #TotalDeaths {
+            z-index: 1;
+			background: rgb(248, 248, 248, 0.7);
+			color:rgb(105, 4, 4);
+			font-family: Courier, Arial, Helvetica, sans-serif;
+			font-size:18px;
+            font-weight: bold;
+            text-align: right;
+            position: fixed;
+            top: 60px;
+            left: 27%;
+            width: 240px;
+		}
+
+	</style>
+	<link rel="stylesheet" href="leaflet.css" />
+	<script src="leaflet.js"></script>
+	<script src="esri-leaflet.js"></script>
+	<script src='dist/Leaflet.fullscreen.min.js'></script>
+    <link rel='stylesheet' href='dist/leaflet.fullscreen.css' />
+    <script src='dist/leaflet-zoom-show-hide.js'></script>
+	<script src='dist/L.Control.MousePosition.js'></script>
+	<link rel='stylesheet' href='dist/L.Control.MousePosition.css' />
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+
+</head>
+
+<body>
+    <div id="mapid"></div>
+    <div id="TotalInfections"></div>
+    <div id="TotalDeaths"></div>
+    <script type="text/javascript" src="geojson/us-states.js"></script>
+    <script type="text/javascript" src="heat/dist/leaflet-heat.js"></script>
+    
+	<script type="text/javascript">
+		var mymap = L.map('mapid', {
+			center: [37, -98],
+			zoom: 4
+		});
+
+		var baseMaps = {
+			Streets: L.esri.basemapLayer('Streets'),
+			Topographic: L.esri.basemapLayer('Topographic'),	
+            Gray: L.esri.basemapLayer('Gray'),
+            DarkGray: L.esri.basemapLayer('DarkGray'),				
+		};
+		baseMaps.Gray.addTo(mymap);
+		
+
+        function getData(callback) {     
+            var countiesUrl = 'https://services1.arcgis.com/0MSEUqKaxRlEPj5g/ArcGIS/rest/services/ncov_cases_US/FeatureServer/0/query?returnGeometry=true&where=Country_Region=%27US%27&outFields=*&f=geojson';
+		    $.getJSON(countiesUrl, function(data) { 
+                callback(data);                
+            });
+        }
+        var myCountiesI = [];
+        var myCountiesD = [];
+        var noCoords = [];
+        var noCovid = [];
+        var maxCounty = '';
+        getData(function(data) {
+            console.log('Number of counties: ', data.features.length); //number of features
+            sumInfections = 0;
+            sumDeaths = 0;
+            min = 0, max = 0, y = 0;          
+            for (var i = 0; i < data.features.length; i++) {
+                var num = data.features[i].properties.Confirmed;
+                var deaths = data.features[i].properties.Deaths;
+                sumDeaths += deaths;
+				sumInfections += num;
+                if (data.features[i].geometry == null) {                   
+                    //console.log('**NO COORDINATES**', i, data.features[i].properties.Combined_Key, data.features[i].properties.Confirmed);
+                    noCoords.push([data.features[i].properties.Combined_Key, data.features[i].properties.Confirmed]);
+                }
+                else if (num == 0){ 
+                    //console.log('**County with NO INFECTIONS**', i, data.features[i].properties.Combined_Key, data.features[i].properties.Confirmed);
+                    noCovid.push([data.features[i].properties.Combined_Key, data.features[i].properties.Confirmed]);
+                }
+                else { 
+                    //find county with max number of infections and use number for normalizing
+                    max = (num > max) ? num : max;
+                    if (num == max) {
+                        maxCounty = data.features[i].properties.Combined_Key;
+                    }                   
+                    //min = (num < min) ? num : min; 
+                    //y = 1 + ((num-1)*(10-1))/(max-1); //equation to normalize numbers from 1-10
+                    //console.log('Number, Max, normalized: ', num, max, y);                   
+                    //countyCoords = data.features[i].geometry.coordinates.reverse();
+                    countyLat = data.features[i].properties.Lat;
+                    countyLong = data.features[i].properties.Long_;
+                    //countyConfirmed = data.features[i].properties.Confirmed;
+                    //countyDeaths = data.features[i].properties.Deaths;
+                    var itemsI = [countyLat, countyLong, num]
+                    var itemsD = [countyLat, countyLong, deaths]
+                    myCountiesI.push([...itemsI]);
+                    myCountiesD.push([...itemsD]);
+                }
+            }
+            console.log('County with highest infections: ', maxCounty, max.toLocaleString());
+            console.log('No coordinates: ', noCoords);
+            console.log('No Infections: ', noCovid);
+            console.log('Final Infections Array: ', myCountiesI);
+            console.log('Final Death Array: ', myCountiesD);
+            var heatI = L.heatLayer(myCountiesI, {
+                radius: 15,  //default is 25
+                minOpacity: 0.1,  //the minimum opacity the heat will start at, default is 0
+                //maxZoom: 7, //equals maxZoom of the map by default
+                max: 1,  //maximum point intensity, 1.0 by default
+                blur: 12,  //amount of blur, 15 by default
+                gradient: {0.4: 'blue', 0.65: 'lime', 1: 'red'}  //color gradient config
+                
+            });
+
+            var heatD = L.heatLayer(myCountiesD, {
+                radius: 15,  //default is 25
+                minOpacity: 0.1,  //the minimum opacity the heat will start at, default is 0
+                //maxZoom: 3, //equals maxZoom of the map by default
+                max: 1,  //maximum point intensity, 1.0 by default
+                blur: 12,  //amount of blur, 15 by default
+                gradient: {0.4: 'blue', 0.65: 'lime', 1: 'red'}  //color gradient config
+                
+            });
+
+            var counties = L.geoJSON(data, {
+                pointToLayer:  function(feature, latlng) {
+                    countyName = (feature.properties.Combined_Key);
+                    return L.circle(latlng, {
+                        weight: 0.2,
+                        opacity: 1,
+                        color: 'red',
+                        fillOpacity: 0.2,
+                        radius: getSize(feature.properties.Confirmed)
+                    });
+
+                }
+            });
+
+            function getSize(d) {
+            return d > 100000 ? 25000 :
+                d > 10000  ? 15000 :
+                d > 5000  ? 12500 :
+                d > 1000  ? 10000 :
+                d > 100   ? 7500 :
+                d > 20   ? 5000 :
+                d > 1   ? 2500 :
+                1000;
+            }
+
+            // used Npm package leaflet.zoomshowhide to control display of heat layers
+            zsh = new ZoomShowHide();
+            zsh.addTo(mymap);
+            heatI.min_zoom = 2;
+            heatI.max_zoom = 7;
+            zsh.addLayer(heatI);
+            counties.min_zoom = 8;
+            zsh.addLayer(counties);
+
+
+    		// This function controls the scale for the county points layer. Only want them displayed when zoomed in.	
+/*             mymap.on('zoomend', function(e) {
+                if (mymap.getZoom() >= 8) {
+                    console.log(mymap.getZoom());
+                    mymap.addLayer(counties);
+                    console.log(mymap.hasLayer(heatI));
+                }
+                else if (mymap.getZoom() < 8 ) {
+                    console.log(mymap.getZoom());
+                    mymap.removeLayer(counties);
+                    console.log(mymap.hasLayer(heatI));
+                }
+            });	 */
+
+            
+            counties.bindPopup(function (layer) {
+                var countyName = layer.feature.properties.Combined_Key;
+                var numInfected = layer.feature.properties.Confirmed.toLocaleString(); // Adds commas to large numbers
+                var numDead = layer.feature.properties.Deaths.toLocaleString(); // Adds commas to large numbers 
+                var featureDate = new Date(layer.feature.properties.Last_Update);
+			    return L.Util.template('<b>' + countyName + '</b><br>Confirmed cases: <b>' + numInfected + '</b><br>Deaths: <b>' + numDead + '</b><br><br><i>Last updated:<br> '+ featureDate.toDateString() + ' ' + featureDate.toLocaleTimeString() + '</i>', layer.feature.properties);
+            });
+
+        overlays = {
+            "Infections": heatI,
+            "Deaths": heatD           
+        };
+
+        L.control.mousePosition().addTo(mymap);
+        mymap.addControl(new L.Control.Fullscreen());
+        L.control.layers(baseMaps, overlays).addTo(mymap);
+        document.getElementById("TotalInfections").innerHTML = 'Infections: ' + sumInfections.toLocaleString();
+        document.getElementById("TotalDeaths").innerHTML = 'Deaths: ' + sumDeaths.toLocaleString(); 
+
+        });
+       
+	</script> 
+	
+</body>
+
+</html>

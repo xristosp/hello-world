@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>COVID-19 US States Choropleth</title>
+
+	<style>
+		html, body {
+			height: 100%;
+			margin: 0;
+			padding: 0;
+            background-image: url("http://gis.p5hq.com/wp-content/uploads/2020/04/what-the-hex.png"); 
+            background-position: center center; 
+            background-size: auto; 
+            background-repeat: repeat; 
+            background-attachment: scroll;
+		}
+		#mapid {
+            z-index: 0;
+			position: absolute;
+			top:0; 
+			bottom:0; 
+			right:0; 
+			left:0;
+			width: 900px;
+			height: 700px;
+			margin-left: auto;
+			margin-right: auto;
+        }
+		#TotalCases {
+            z-index: 1;
+			background: rgb(248, 248, 248, 0.7);
+			color:rgb(0, 90, 50);
+			font-family: Courier, Arial, Helvetica, sans-serif;
+			font-size:18px;
+            font-weight: bold;
+            text-align: right;
+            position: fixed;
+            top: 30px;
+            left: 25%;
+            width: 240px;
+			}
+        #TotalDeaths {
+            z-index: 1;
+			background: rgb(248, 248, 248, 0.7);
+			color:rgb(105, 4, 4);
+			font-family: Courier, Arial, Helvetica, sans-serif;
+			font-size:18px;
+            font-weight: bold;
+            text-align: right;
+            position: fixed;
+            top: 60px;
+            left: 25%;
+            width: 240px;
+			}
+
+	</style>
+	<link rel="stylesheet" href="leaflet.css" />
+	<script src="leaflet.js"></script>
+	<script src="esri-leaflet.js"></script>
+	<script src='dist/Leaflet.fullscreen.min.js'></script>
+	<link rel='stylesheet' href='dist/leaflet.fullscreen.css' />
+	<script src='dist/L.Control.MousePosition.js'></script>
+	<link rel='stylesheet' href='dist/L.Control.MousePosition.css' />
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+
+</head>
+
+<body>
+    <div id="mapid"></div>
+    <div id="TotalCases"></div>
+    <div id="TotalDeaths"></div>
+    <script type="text/javascript" src="geojson/us-states.js"></script>
+
+	<script type="text/javascript">
+		var mymap = L.map('mapid', {
+			center: [37, -98],
+			zoom: 4
+		});
+
+		var baseMaps = {
+			Streets: L.esri.basemapLayer('Streets'),
+			Topographic: L.esri.basemapLayer('Topographic'),	
+            Gray: L.esri.basemapLayer('Gray'),
+            DarkGray: L.esri.basemapLayer('DarkGray'),				
+		};
+        baseMaps.Gray.addTo(mymap);
+        
+        function getCovidData(callback) {     
+            var staticUrl = 'https://services1.arcgis.com/0MSEUqKaxRlEPj5g/arcgis/rest/services/ncov_cases/FeatureServer/1/query?returnGeometry=false&where=Country_Region=%27US%27&outFields=Confirmed%2C+Deaths%2C+Province_State%2C+Country_Region%2C+Last_Update&f=geojson';
+            $.getJSON(staticUrl, function(data) {
+                callback(data);                
+            });
+        } 
+
+        var myStatesData = JSON.parse(JSON.stringify(statesData));  //makes a completely independent copy of statesData (deep)
+        console.log("Number of states: ", myStatesData.features.length); //number of features
+        console.log("myStatesData: ", myStatesData);
+        
+        var sumCases = 0;
+        var sumDeaths = 0;
+        // Get updated COVID json out of the asynchronous getJSON function to use and update state data
+        getCovidData(function(covidJson) {
+            console.log("Number of COVID db states: ", covidJson.features.length); //number of features
+            //console.log("covidData: ", covidJson);
+            covidJson.features.sort(function(a,b){
+                var x = a.properties.Province_State;
+                var y = b.properties.Province_State;
+                if (x < y) {return -1;}
+                if (x > y) {return 1;}
+                return 0;
+            });
+            myStatesData.features.sort(function(a,b){
+                var x = a.properties.name;
+                var y = b.properties.name;
+                if (x < y) {return -1;}
+                if (x > y) {return 1;}
+                return 0;
+            });
+            //console.log("Sorted covidData: ", covidJson);
+            //console.log("Sorted statesData: ", myStatesData);           
+            var extraStates = [];
+            for (var i = 0; i < myStatesData.features.length; i++) {                            
+                myStateName = myStatesData.features[i].properties.name;
+                myStateConfirmed = myStatesData.features[i].properties.covid_confirmed;
+                myStateDeaths = myStatesData.features[i].properties.covid_deaths;
+                stateName = covidJson.features[i].properties.Province_State;
+                num = covidJson.features[i].properties.Confirmed;
+                deaths = covidJson.features[i].properties.Deaths;
+                lastUpdate = covidJson.features[i].properties.Last_Update;
+                sumCases += num;
+                sumDeaths += deaths;
+                
+                // Convert date string to readable format. 
+                //var timestampMsec = 1228694400000;
+                //var myDate = new Date(timestampMsec);
+                //var str = myDate.toDateString();
+                var featureDate = new Date(covidJson.features[i].properties.Last_Update); // Converts date string to readable format
+
+                //console.log("name: ", myStateName);
+                //console.log("name2: ", stateName);
+                if(myStateName == stateName) {
+                    myStatesData.features[i].properties.covid_confirmed = num;
+                    myStatesData.features[i].properties.covid_deaths = deaths;
+                    myStatesData.features[i].properties.last_update = featureDate;
+                    console.log("UPDATED: ", myStateName, myStatesData.features[i].properties.covid_confirmed, myStatesData.features[i].properties.covid_deaths, myStatesData.features[i].properties.last_update);
+                    }
+                    else {
+                        // We know the COVID dataset has more values than the 52-state geojson we are using for our map,
+                        // so we will remove the excess COVID "states" and create an array of those extras for reference
+                        extraStates.push(stateName, num, deaths);
+                        covidJson.features.splice(i, 1);  // removes extra state
+                        i = i - 1;  // put counter back one to compare next pair after removal
+                    }
+            }
+            console.log("Extra States: ", extraStates);
+            console.log("covidData after deletions: ", covidJson);
+            console.log("NEW statesData: ", myStatesData);
+            document.getElementById("TotalCases").innerHTML = 'Infections: ' + sumCases.toLocaleString();
+            document.getElementById("TotalDeaths").innerHTML = 'Deaths: ' + sumDeaths.toLocaleString(); 
+            console.log("NEWEST statesData: ", myStatesData);
+            
+            myStatesDead = L.geoJson(myStatesData, {
+				style: stateDeadStyle
+                });
+
+            myStatesInfected = L.geoJson(myStatesData, {
+				style: stateInfectedStyle
+                });
+            myStatesInfected.addTo(mymap);
+
+            overlays = {
+            "Infected by State": myStatesInfected,
+            "Deaths by State": myStatesDead           
+            };
+
+            myStatesInfected.bindPopup(function (layer) {
+            var numInfected = layer.feature.properties.covid_confirmed.toLocaleString(); // Adds commas to large numbers
+            var numDead = layer.feature.properties.covid_deaths.toLocaleString(); // Adds commas to large numbers           
+			return L.Util.template('<b>{name}</b><br><b>Confirmed cases: ' + numInfected + '</b><br>Deaths: ' + numDead + '<br><br><i>Last updated:<br> '+ featureDate.toDateString() + ', ' + featureDate.toLocaleTimeString() + '</i>', layer.feature.properties);
+            });
+
+            myStatesDead.bindPopup(function (layer) {
+            var numInfected = layer.feature.properties.covid_confirmed.toLocaleString(); // Adds commas to large numbers
+            var numDead = layer.feature.properties.covid_deaths.toLocaleString(); // Adds commas to large numbers          
+			return L.Util.template('<b>{name}</b><br>Confirmed cases: ' + numInfected + '<br><b>Deaths: ' + numDead + '</b><br><br><i>Last updated:<br> '+ featureDate.toDateString() + ', ' + featureDate.toLocaleTimeString() + '</i>', layer.feature.properties);
+            });
+            
+            L.control.layers(baseMaps, overlays).addTo(mymap);
+        });
+        
+        console.log("NEWEST statesData: ", myStatesData);
+   
+		// get color depending on number value
+		function getColorInfected(d) {
+			return d > 10000 ? '#005a32'  : 
+					d > 5000  ? '#238b45' :
+					d > 2000  ? '#41ab5d' :
+					d > 1000  ? '#74c476' :
+					d > 500   ? '#a1d99b' :
+					d > 200   ? '#c7e9c0' :
+					d > 100   ? '#e5f5e0' :
+								'#f7fcf5';						
+            }  
+        function getColorDead(d) {
+			return d > 1000 ? '#99000d'  : 
+					d > 500  ? '#cb181d' :
+					d > 200  ? '#ef3b2c' :
+					d > 100  ? '#fb6a4a' :
+					d > 50   ? '#fc9272' :
+					d > 20   ? '#fcbba1' :
+					d > 10   ? '#fee0d2' :
+								'#fff5f0';						
+			}  
+        // Green 8-class, light to dark ['#f7fcf5','#e5f5e0','#c7e9c0','#a1d99b','#74c476','#41ab5d','#238b45','#005a32']
+        // Red 8-class   ['#fff5f0','#fee0d2','#fcbba1','#fc9272','#fb6a4a','#ef3b2c','#cb181d','#99000d']
+        // Blue 8-class ['#f7fbff','#deebf7','#c6dbef','#9ecae1','#6baed6','#4292c6','#2171b5','#084594']
+        // Purple 8-class ['#fcfbfd','#efedf5','#dadaeb','#bcbddc','#9e9ac8','#807dba','#6a51a3','#4a1486']
+        // Orange 8-class ['#fff5eb','#fee6ce','#fdd0a2','#fdae6b','#fd8d3c','#f16913','#d94801','#8c2d04']
+				
+		function stateInfectedStyle (feature) {
+			return {
+				weight: 0.6,
+				opacity: 1,
+                color: 'white',
+                dashArray: '3',
+                fillOpacity: 0.7,
+                fillColor : getColorInfected(feature.properties.covid_confirmed)
+				};
+            } 
+        
+        function stateDeadStyle (feature) {
+			return {
+				weight: 0.6,
+				opacity: 1,
+                color: 'white',
+                dashArray: '3',
+                fillOpacity: 0.7,
+                fillColor : getColorDead(feature.properties.covid_deaths)
+				};
+            }   		
+
+		mymap.addControl(new L.Control.Fullscreen());
+        
+	</script> 
+	
+</body>
+
+</html>

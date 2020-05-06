@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>COVID-19 US Counties Choropleth</title>
+
+	<style>
+		html, body {
+			height: 100%;
+			margin: 0;
+			padding: 0;
+			background-image: url("http://gis.p5hq.com/wp-content/uploads/2020/04/what-the-hex.png"); 
+            background-position: center center; 
+            background-size: auto; 
+            background-repeat: repeat; 
+            background-attachment: scroll;
+		}
+		#mapid {
+            z-index: 0;
+			position: absolute;
+			top:0; 
+			bottom:0; 
+			right:0; 
+			left:0;
+			width: 900px;
+			height: 700px;
+        }
+        #navbar {
+            z-index: 1;
+            background-color: rgba(0, 0, 0, 0.3);
+            color: #f2f2f2;
+            font-size: 20px;
+            font-family: Arial, Helvetica, sans-serif;
+            text-align: center;
+            padding: 7px;
+            position: fixed;
+            top: 10px;
+            left: 240px;
+            height: 22px;
+            width: 400px;
+            border: none;
+            border-radius: 8px;
+        }
+
+	</style>
+	<link rel="stylesheet" href="leaflet.css" />
+	<script src="leaflet.js"></script>
+	<script src="esri-leaflet.js"></script>
+	<script src='dist/Leaflet.fullscreen.min.js'></script>
+	<link rel='stylesheet' href='dist/leaflet.fullscreen.css' />
+	<script src='dist/L.Control.MousePosition.js'></script>
+	<link rel='stylesheet' href='dist/L.Control.MousePosition.css' />
+
+</head>
+
+<body>
+    <div id="mapid"></div>
+	<div id="navbar">COVID-19: US Confirmed Cases by County</div>
+
+	<script type="text/javascript">
+		var mymap = L.map('mapid', {
+			center: [37, -98],
+			zoom: 4
+		});
+
+		var basemaps = {
+			Streets: L.esri.basemapLayer('Streets'),
+			Topographic: L.esri.basemapLayer('Topographic'),	
+            Gray: L.esri.basemapLayer('Gray'),
+            DarkGray: L.esri.basemapLayer('DarkGray'),				
+		};
+		basemaps.Gray.addTo(mymap);
+
+		var countyConfirmed = L.esri.featureLayer({
+            url: 'https://services9.arcgis.com/mt4kvYhNXSa5AqLG/ArcGIS/rest/services/COVID_POPULATION_COUNTIES/FeatureServer/0',
+            where: "USA_Cases_Confirmed <> '0'",
+			fields: ['OBJECTID', 'USA_Cases_Last_Update', 'USA_Cases_Confirmed', 'USA_Cases_Deaths', 'USA_Cases_Combined_Key'],
+            simplifyFactor: 3,
+            precision: 5,
+			minZoom: 4,
+            style: countyStyle
+		}).addTo(mymap);
+		
+		mymap.addControl(new L.Control.Fullscreen());
+
+		// get color depending on number value
+		function getColor(d) {
+			//console.log('d: ' + d + ' . '); 
+			return d > 1000 ? '#800026' :
+					d > 500  ? '#BD0026' :
+					d > 200  ? '#E31A1C' :
+					d > 100  ? '#FC4E2A' :
+					d > 50   ? '#FD8D3C' :
+					d > 20   ? '#FEB24C' :
+					d > 10   ? '#FED976' :
+								'#FFEDA0';
+		}
+
+		function countyStyle(feature) {
+			return {
+				weight: 0.3,
+				opacity: 0.5,
+				fillOpacity: 0.7,
+				color: 'black',
+                dashArray: '3',
+				fillColor: getColor(feature.properties.USA_Cases_Confirmed)
+				};
+        }
+
+        var timestampMsec = 1228694400000;
+		var myDate = new Date(timestampMsec);
+        var str = myDate.toDateString();
+        
+        countyConfirmed.bindPopup(function (layer) {
+            var featureDate = new Date(layer.feature.properties.USA_Cases_Last_Update);
+			return L.Util.template('<p>{USA_Cases_Combined_Key}<br>{USA_Cases_Confirmed} confirmed cases<br>{USA_Cases_Deaths} deaths<br><br><i>Last updated:<br> '+ featureDate.toDateString() + ', ' + featureDate.toLocaleTimeString() + '</i></p>', layer.feature.properties);
+		});
+
+	</script> 
+	
+</body>
+
+</html>

@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>COVID-19 US States Choropleth</title>
+
+	<style>
+		html, body {
+			height: 100%;
+			margin: 0;
+			padding: 0;
+			background-image: url("http://gis.p5hq.com/wp-content/uploads/2020/04/what-the-hex.png"); 
+            background-position: center center; 
+            background-size: auto; 
+            background-repeat: repeat; 
+            background-attachment: scroll;
+		}
+		#mapid {
+            z-index: 0;
+			position: absolute;
+			top:0; 
+			bottom:0; 
+			right:0; 
+			left:0;
+			width: 900px;
+			height: 700px;
+			margin-left: auto;
+			margin-right: auto;
+        }
+        #navbar {
+            z-index: 1;
+            background-color: rgba(0, 0, 0, 0.3);
+            color: #f2f2f2;
+            font-size: 20px;
+            font-family: Arial, Helvetica, sans-serif;
+            text-align: center;
+            padding: 7px;
+            position: fixed;
+            top: 10px;
+            left: 33%;
+            height: 22px;
+            width: 500px;
+            border: none;
+            border-radius: 8px;
+        }
+		#TotalI {
+            z-index: 1;
+			background: rgb(248, 248, 248, 0.7);
+			color:rgb(46, 46, 46);
+			font-family: Courier, Arial, Helvetica, sans-serif;
+			font-size:18px;
+            font-weight: bold;
+            text-align: right;
+            position: fixed;
+            top: 60px;
+            left: 25%;
+            width: 240px;
+			}
+		#TotalD {
+            z-index: 1;
+			background: rgb(248, 248, 248, 0.7);
+			color:rgb(105, 4, 4);
+			font-family: Courier, Arial, Helvetica, sans-serif;
+			font-size:18px;
+            font-weight: bold;
+            text-align: right;
+            position: fixed;
+            top: 90px;
+            left: 25%;
+            width: 240px;
+		}
+
+	</style>
+	<link rel="stylesheet" href="leaflet.css" />
+	<script src="leaflet.js"></script>
+	<script src="esri-leaflet.js"></script>
+	<script src='dist/Leaflet.fullscreen.min.js'></script>
+	<link rel='stylesheet' href='dist/leaflet.fullscreen.css' />
+	<script src='dist/L.Control.MousePosition.js'></script>
+	<link rel='stylesheet' href='dist/L.Control.MousePosition.css' />
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+
+</head>
+
+<body>
+    <div id="mapid"></div>
+	<div id="navbar">COVID-19: US Confirmed Cases by State & County</div>
+	<div id="TotalI"></div>
+	<div id="TotalD"></div>
+    <script type="text/javascript" src="geojson/us-states.js"></script>
+
+	<script type="text/javascript">
+		var mymap = L.map('mapid', {
+			center: [37, -98],
+			zoom: 4
+		});
+
+		var baseMaps = {
+			Streets: L.esri.basemapLayer('Streets'),
+			Topographic: L.esri.basemapLayer('Topographic'),	
+            Gray: L.esri.basemapLayer('Gray'),
+            DarkGray: L.esri.basemapLayer('DarkGray'),				
+		};
+		baseMaps.Gray.addTo(mymap);
+
+		
+		function countyStyle(feature) {
+			return {
+				weight: 0.3,
+				opacity: 0.6,
+				color: 'black',
+				dashArray: '3',
+				fillOpacity: 0.5,
+				fillColor: getColor2(feature.properties.USA_Cases_Confirmed)
+				};
+		}
+		
+		var countyConfirmed = L.esri.featureLayer({
+            url: 'https://services9.arcgis.com/mt4kvYhNXSa5AqLG/ArcGIS/rest/services/COVID_POPULATION_COUNTIES/FeatureServer/0',
+            where: "USA_Cases_Confirmed <> '0'",
+			fields: ['OBJECTID', 'USA_Cases_Last_Update', 'USA_Cases_Confirmed', 'USA_Cases_Deaths', 'USA_Cases_Combined_Key'],
+            simplifyFactor: 3,
+            precision: 5,
+			minZoom: 8,
+            style: countyStyle
+		}).addTo(mymap);
+
+		var covidData = L.esri.featureLayer({
+		  url: 'https://services1.arcgis.com/0MSEUqKaxRlEPj5g/ArcGIS/rest/services/ncov_cases/FeatureServer/1',
+		  where: "Confirmed <> '0' AND Country_Region = 'US'",
+		  // Feature Layer Options
+		  pointToLayer: function (geojson, latlng) {
+			var name = (geojson.properties.Province_State);			
+			statesCovid = (geojson.properties.Confirmed);
+			var myIcon = L.divIcon({ 
+				iconSize: new L.Point(2, 2), 
+				html: statesCovid.toLocaleString()
+			});
+			return L.marker(latlng, {
+				icon: myIcon,
+			});			
+			}
+		}).addTo(mymap);
+
+		countyConfirmed.bindPopup(function (layer) {
+            var featureDate1 = new Date(layer.feature.properties.USA_Cases_Last_Update);
+			return L.Util.template('<p>{USA_Cases_Combined_Key}<br>{USA_Cases_Confirmed} confirmed cases<br>{USA_Cases_Deaths} deaths<br><br><i>Last updated:<br> '+ featureDate1.toDateString() + ', ' + featureDate1.toLocaleTimeString() + '</i></p>', layer.feature.properties);
+		});
+
+		covidData.bindPopup(function (layer) {
+			var featureDate2 = new Date(layer.feature.properties.Last_Update);
+			return L.Util.template('<b>{Combined_Key}</b><br>Confirmed cases: {Confirmed}<br>Deaths: {Deaths}<br><br><i>Last updated:<br> '+ featureDate2.toDateString() + ' ' + featureDate2.toLocaleTimeString() + '</i>', layer.feature.properties);
+		});			
+				
+		// This is to count data using geojson from url
+		var staticUrl = 'https://services1.arcgis.com/0MSEUqKaxRlEPj5g/arcgis/rest/services/ncov_cases/FeatureServer/1/query?returnGeometry=false&where=Country_Region=%27US%27&outFields=Confirmed%2C+Deaths%2C+Province_State%2C+Country_Region&f=geojson';
+		$.getJSON(staticUrl, function(data) {
+			console.log(data.features.length); //number of features
+			sumI = 0;
+			sumD = 0;
+			for (var i = 0; i < data.features.length; i++) {
+				var numI = data.features[i].properties.Confirmed;
+				var numD = data.features[i].properties.Deaths;
+				var stateName = data.features[i].properties.Province_State;
+				sumI += numI;
+				sumD += numD;
+				//console.log(sum); // running sum of number of confirmed cases
+				//console.log('State: ' + data.features[i].properties.Province_State + ', Number: ' + data.features[i].properties.Confirmed); // running sum of number of confirmed cases
+				console.log('State: ' + stateName + '  i: ' + i + '  Confirmed: ' + numI + '  Deaths: ' + numD);
+				myStates.eachLayer(function (layer) {  
+					if(layer.feature.properties.name == stateName) {    
+						layer.setStyle({
+							fillColor : getColor(numI)
+						}) 
+						}
+					});				
+				};
+
+				myStates.addTo(mymap);
+				document.getElementById("TotalI").innerHTML = 'Infections: ' + sumI.toLocaleString();
+				document.getElementById("TotalD").innerHTML = 'Deaths: ' + sumD.toLocaleString();
+		});
+
+		var myStates = L.geoJson(statesData, {
+			style: stateStyle,
+			minZoom: 8 // this only works for raster/tile layers. Vector layers not affected.
+			});
+		
+		// This function controls the scale for the states layer. County layer uses Esri built-in control minzoom	
+		mymap.on('zoomend', function(e) {
+			if (mymap.getZoom() > 7) {
+				mymap.removeLayer(myStates);
+			}
+			else if (mymap.getZoom() <= 7 ) {
+				mymap.addLayer(myStates);
+			}
+		});	
+
+		// get color depending on number value
+		function getColor(d) {
+			return d > 10000 ? '#800026'  : 
+					d > 5000  ? '#BD0026' :
+					d > 2000  ? '#E31A1C' :
+					d > 1000  ? '#FC4E2A' :
+					d > 500   ? '#FD8D3C' :
+					d > 200   ? '#FEB24C' :
+					d > 100   ? '#FED976' :
+								'#FFEDA0';						
+				};   
+
+		function getColor2(d) {
+			return d > 1000 ? '#800026'  : 
+					d > 500  ? '#BD0026' :
+					d > 200  ? '#E31A1C' :
+					d > 100  ? '#FC4E2A' :
+					d > 50   ? '#FD8D3C' :
+					d > 20   ? '#FEB24C' :
+					d > 10   ? '#FED976' :
+								'#FFEDA0';						
+				};  
+				
+		function stateStyle (feature) {
+			return {
+				weight: 0.5,
+				opacity: 0.5,
+				fillOpacity: 0.5,
+				color: 'white'
+				};
+            }   		
+
+
+		mymap.addControl(new L.Control.Fullscreen());
+		
+		var overlays = {
+			"Points": covidData
+		};
+
+		L.control.layers(baseMaps, overlays).addTo(mymap);
+	</script> 
+	
+</body>
+
+</html>
